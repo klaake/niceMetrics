@@ -4,7 +4,7 @@ from indicator import indicator_commands
 import pandas as pd
 
 controller = indicator_controller()
-controller.find_indicators(r"C:\Users\kevin\NiceMetrics\data")
+controller.find_indicators(r"./data")
 controller._readIndicator("apr")
 controller._readIndicator("timing")
 
@@ -29,7 +29,7 @@ args.x_axis = "date"
 ind = controller.make_indicator(args)
 with ui.grid(columns=3) as mygrid:
     mygrid.style("min-height: 33vh; min-width: 75em")
-    controller.renderIndicator("My Custom Chart", 3)
+    #controller.renderIndicator("My Custom Chart", 3)
     controller.renderIndicator("My Custom Indicator")
     controller.renderIndicator("My Custom Indicator",2)
 
