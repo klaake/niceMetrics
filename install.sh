@@ -5,3 +5,4 @@ pip install --upgrade niceGUI
 pip install --upgrade pandas
 pip install --upgrade matplotlib
 pip install --upgrade plotly
+pip install --upgrade pywebview

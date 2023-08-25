@@ -1,50 +1,47 @@
-from nicegui import ui
+#!/bin/sh
+"export" "DIR=$(dirname $0)"
+"exec" "$DIR/venv/bin/python3" "$0" "$@"
+
+from nicegui import ui, app
 from indicator_controller import indicator_controller
-from indicator import indicator_commands
-import pandas as pd
+from uuid import uuid4
+import argparse
 
-controller = indicator_controller()
-controller.find_indicators(r"./data")
-controller._readIndicator("apr")
-controller._readIndicator("timing")
+parser = argparse.ArgumentParser(description='niceMetrics Options')
+parser.add_argument("-native", action="store_true", help='Run in native mode (i.e. local window instead of webhost)', default=False)
+parser.add_argument("-title", action="store", help='Title of the browser tab', default="Nice Metrics")
 
-# This would come from the entry in the view file, which I need to still code...
-args = indicator_commands()
-args.name = "My Custom Indicator"
-args.type = "table"
-#args.indicators = ["apr", "timing"]
-args.indicators = ["apr"]
-#args.join = ["block", "tag"]
-#args.table_columns = ["block", "tag", "opens", "shorts", "wns", "tns", "failing_paths"]
-args.table_columns = ["block", "tag", "opens", "shorts"]
-ind = controller.make_indicator(args)
-
-# make a chart now...
-args = indicator_commands()
-args.name = "My Custom Chart"
-args.type = "line"
-args.indicators = ["apr"]
-args.plot = ["opens","shorts"]
-args.x_axis = "date"
-ind = controller.make_indicator(args)
-with ui.grid(columns=3) as mygrid:
-    mygrid.style("min-height: 33vh; min-width: 75em")
-    #controller.renderIndicator("My Custom Chart", 3)
-    controller.renderIndicator("My Custom Indicator")
-    controller.renderIndicator("My Custom Indicator",2)
-
-ui.run()
+parsed_args, unparsed_pargs = parser.parse_known_args()
 
 
 
-#ui.icon('thumb_up')
-#ui.markdown('This is **Markdown**.')
-#ui.html('This is <strong>HTML</strong>.')
-#with ui.row():
-#    ui.input(label='Data Path', placeholder='directory/file', on_change)
-#ui.link('NiceGUI on GitHub', 'https://github.com/zauberzeug/nicegui')
-#
-#ui.run()
-#ui.button('Say hi!', on_click=lambda: ui.notify('Hi!', closeBtn='OK'))
+@ui.page('/niceMetrics/indicator')
+async def private_indicator_page():
+    controller = indicator_controller()
+    controller.prepareIndicators()
+    controller.displayIndicators()
 
-#ui.run()
+@ui.page('/niceMetrics')
+async def main_page():
+    header = ui.header(elevated=True).style('background-color: #3874c8').classes('items-center justify-between')
+    left_panel = ui.left_drawer(top_corner=False, bottom_corner=True).style('background-color: #d7e3f4; width: 300px;')
+
+    with header:
+        ui.label("Welcome to NiceMetrics!").style("font-size: 200%").tailwind.font_weight('extrabold')
+    with left_panel:
+        ui.link('New Indicator Instance', private_indicator_page, new_tab=True)
+
+metric_arguements = {}
+
+if parsed_args.native is True:
+    metric_arguements['native'] = True
+if parsed_args.title is not None:
+    metric_arguements['title'] = parsed_args.title
+
+if parsed_args.native is not True:
+    app.on_connect(main_page)
+else:
+    app.on_connect(private_indicator_page)
+
+ui.run(**metric_arguements)
+main_page()

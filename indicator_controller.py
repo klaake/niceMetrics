@@ -63,7 +63,6 @@ class indicator_controller:
             # Store the files we found by the indicator name.
             self.indicator_files[indicator_name].append(file)
 
-    @ui.page('/niceMetrics')
     def displayIndicators(self):
         # Go through the grid of indicators, and write them out!
 
