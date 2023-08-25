@@ -38,6 +38,13 @@ class indicator_view:
 
         # A sortable number so I can place things appropriately
         self.position_weight = None
+
+        # This stores a list of thresholds to apply to tables.
+        self.thresholds = []
+        self.aggrid_thresholds = defaultdict(lambda: {})
+
+        # This is the max rows displayed for a table before you need to page.
+        self.page_size = 10
     
     def setRename(self, old_name:str, new_name:str):
         self.renames[old_name] = new_name
@@ -104,12 +111,71 @@ class indicator_view:
         with ui.table(
             columns=column_for_ui, 
             rows=rows, 
-            pagination=10, 
-            title=self.name
+            pagination=self.page_size,
+            title=self.name,
             ).props('dense').classes(f"col-span-{self.colspan} my-sticky-header-table") as table:
             self.table = table
-    def line(self):
-        print(f" X = {self.graph_x}")
+
+            if len(self.thresholds) > 0:
+            # This is how do you coloring of cells conditionally
+                slot_command = '''
+                    <q-tr :props="props">
+                        <q-td 
+                            v-for="col in props.cols"
+                            :key="col.name"
+                            :props="props"
+                            :class="{'''
+                            
+                for cmd in self.thresholds:
+                    slot_command = slot_command + cmd
+
+                slot_command += r'''}"
+                        >
+                            {{ col.value }}
+                        </q-td>
+                    </q-tr>
+                '''
+                #print("SLOT COMMAND:")
+                #print(slot_command)
+                table.add_slot('body', slot_command)
+                table.on('cellClicked', self.onCellClicked)
+
+    def aggrid(self):
+        dataframe=self.display_dataframe
+        column_for_ui = []
+        for col in self.plot:
+            col_rename = self.getRename(col)
+            col_data = {'headerName': col_rename, 'field': col, 'sortable' : "true", 
+                        'cellClassRules' : self.aggrid_thresholds[col],
+                        }
+
+
+            column_for_ui.append(col_data)
+        rows = dataframe.to_dict('records')
+        #print(rows)
+        with ui.element():
+            if self.name is not None:
+                ui.label(self.name)
+            table =  ui.aggrid({
+                'columnDefs':column_for_ui, 
+                'rowData':rows, 
+                'pagination':'true',
+                'paginationAutoPageSize':'true',
+                "suppressFieldDotNotation" : "true",
+                }).classes(f"col-span-{self.colspan}")
+
+        #for row in table.options['rowData']:
+        #    for col, value in row.items():
+        #        row[col] = '<a href=https://google.com>' + str(value) + "</a>"
+        #    
+        table.on('cellClicked', self.onCellClicked)
+
+    def onCellClicked(sender, msg):
+        print(sender)
+        print(msg)
+            
+    def line(self, container=None):
+        #print(f" X = {self.graph_x}")
         fig = px.line(self.display_dataframe, x=self.graph_x, y=self.plot)
         fig.update_layout(title=self.name)
         fig.update_layout(legend=dict(
@@ -119,10 +185,29 @@ class indicator_view:
            xanchor="right", 
            x=1
         ))
-        ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style("min-height: 500px")
+        if container is None:
+            container = ui.element().classes(f"col-span-{self.colspan}")
+            
+        with container:
+            with ui.row():
+                ui.label("Change Graph Type:")
+                radio = ui.radio(["line", "bar"], value="line", on_change=self.on_chart_change).props("inline")
+            my_chart = ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style("min-height: 500px")
+            radio.mychart = my_chart
+            radio.container = container
 
-    def bar(self):
-        print(f" X = {self.graph_x}")
+    def on_chart_change(self, value):
+        # Clear out the old chart
+        value.sender.container.clear()
+
+        # Render the chart that the user now wants...
+        if value.sender.value == "bar":
+            self.bar(value.sender.container)
+        if value.sender.value == "line":
+            self.line(value.sender.container)
+
+    def bar(self, container=None):
+        #print(f" X = {self.graph_x}")
         fig = px.bar(self.display_dataframe, x=self.graph_x, y=self.plot)
         fig.update_layout(title=self.name)
         fig.update_layout(legend=dict(
@@ -132,7 +217,17 @@ class indicator_view:
            xanchor="right", 
            x=1
         ))
-        ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style("min-height: 500px")
+
+        if container is None:
+            container = ui.element().classes(f"col-span-{self.colspan}")
+
+        with container:
+            with ui.row():
+                ui.label("Change Graph Type:")
+                radio = ui.radio(["line", "bar"], value="bar", on_change=self.on_chart_change).props("inline")
+            my_chart = ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style("min-height: 500px")
+            radio.mychart = my_chart
+            radio.container = container
         
                 
 

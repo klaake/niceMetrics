@@ -1,11 +1,11 @@
 import os
 import sys
-from indicator import indicator_view
 import pandas as pd
 from collections import defaultdict
+from functools import reduce
 import glob
 import time
-from nicegui import ui
+from nicegui import ui, Tailwind
 import numpy as np
 from matplotlib import pyplot as plt
 import plotly.graph_objects as go
@@ -24,18 +24,28 @@ class indicator_controller:
         # Indicator Objects by Name
         self.indicators = defaultdict(lambda: None)
         
+        # This is the title that will appear at the top of the page.
         self.MainTitle = None
 
+        # The directory to start looking for CSV files for the indicators.  Set by an 
+        # input box
         self.data_source = None
+        # The view file that describes how to setup the page
         self.view_file = None
+
+        # This is a ui.header() object that will store the input boxes and load indicator
+        # button
         self.indicator_header = None
-        self.main_title_label = None
+
+        # This is the ui.grid() object that sets up the 3xN grid of indicator objects.
         self.mygrid = None
+
+        # This is the minimum size a widget can be on the screen. Can configure in the view file
+        self.min_height = "500px"
 
     # This function will search the underlying directories and look for CSV files
     def findIndicators(self, datapath: str) -> bool:
         # Does the directory exist?
-        #print(f"Datapath = {datapath}")
         if os.path.exists(datapath) is False:
             return False
         
@@ -43,43 +53,53 @@ class indicator_controller:
         if os.path.isdir(datapath) is False:
             return False
 
+        # Get the CSV files via a glob command.  Look for anything ending in .csv
         csv_files = glob.glob(f"{datapath}/**/*.csv", recursive=True)
 
         for file in csv_files:
+            # the indicator name should be the name in <indicator>.csv
             file_basename = os.path.basename(file)
             indicator_name = os.path.splitext(file_basename)[0]
+            # Store the files we found by the indicator name.
             self.indicator_files[indicator_name].append(file)
-            #print(f"Storing Indicator ({indicator_name}): {file}")
 
+    @ui.page('/niceMetrics')
     def displayIndicators(self):
         # Go through the grid of indicators, and write them out!
-        
+
+        # either create the header, or clear it out depending on if we're refreshing or creating initially
         if self.indicator_header is not None:
             self.indicator_header.clear()
         else:
             self.indicator_header = ui.header(elevated=True).style('background-color: #3874c8').classes('items-center justify-between')
 
+        # Same with the grid.  If we're refreshing we clear it out, else we create it
         if self.mygrid is not None:
             self.mygrid.clear()
         else:
             self.mygrid = ui.grid(columns=3)
 
+        # Create the header.  Add 2 input boxes.  One for the data directory and one for the 
+        # view file.  Add the ability to hide/show the boxes for more visible room for the 
+        # indicators.
         with self.indicator_header:
             with ui.column():
-                if self.MainTitle is not None:
-                    self.main_title_label = ui.label(self.MainTitle).style('font-size: 200%; font-weight: 300')
-                with ui.expansion("Expand Data Input", icon='work', value=True).classes('w-full').style("width:800px") as self.expander:
+                with ui.expansion("Hide/Show Data and View Inputs",  value=True).classes('w-full').style("width:800px") as self.expander:
                     ui.input(label="Data Source Directory").bind_value(self, "data_source").props("outlined dense stack-label").style("width:800px")
                     ui.input(label="Indicator View File").bind_value(self, "view_file").props("outlined dense stack-label").style("width:800px")
                 ui.button('Load Indicators', on_click=lambda: self.reload_indicators())
+        
 
         with self.mygrid:
-            self.mygrid.style("min-height: 33vh; min-width: 75em; max-height: 33%")
+            if self.MainTitle is not None:
+                ui.label(self.MainTitle).classes("text-center col-span-3").style("font-size: 200%").tailwind.font_weight('extrabold')
+            #self.mygrid.style("min-height: 33vh; min-width: 75em; max-height: 33%")
+            self.mygrid.style("min-height: 33vh; min-width: 100%; max-height: 33%")
             for row in self.page_matrix:
                 for indicator in row:
                     if indicator is None:
                         #ui.label("spacer")
-                        ui.label("")
+                        ui.label("").classes("w-1/3")
                         continue
                     if indicator == "colspan":
                         continue
@@ -88,7 +108,9 @@ class indicator_controller:
                     # Table Indicator!
                     ################################################################
                     if indicator.type == "table":
-                        indicator.table()
+                        indicator.aggrid()
+                    if indicator.type == "aggrid":
+                        indicator.aggrid()
                     if indicator.type == "line":
                         indicator.line()
                     if indicator.type == "bar":
@@ -119,38 +141,7 @@ class indicator_controller:
         self.prepareIndicators()
         self.displayIndicators()
         
-        
-    def renderIndicator(self, name, colspan=1):
-        indicator = self.indicators[name]
-        if indicator is None:
-            return False
-        
-        if indicator.type == "table":
-            dataframe = indicator.display_dataframe
-            column_for_ui = []
-            for col in dataframe.columns:
-                col_data = {'name': col, 'label': col, 'field': col, 'sortable' : True, 'align': "left"}
-                column_for_ui.append(col_data)
 
-            rows = dataframe.to_dict('records')
-            #print(rows)
-            with ui.table(
-                columns=column_for_ui, 
-                rows=rows, 
-                pagination=10, 
-                title=indicator.name
-                ).props('dense').classes(f"col-span-{colspan}") as table:
-                self.table = table
-        if indicator.type == "line":
-            if indicator.joined_dataframe is None:
-                dataframe = indicator.display_dataframe
-            else:
-                dataframe = indicator.get_table_frame()
-            fig = px.line(dataframe, x=indicator.graph_x, y=indicator.plot)
-            fig.update_layout(title=indicator.name)
-            ui.plotly(fig).classes(f"col-span-{colspan}").style("min-height: 300px")
-
-                
     # This function will take all the indicator files named "indicator" and will
     #  read them into a pandas dataframe.  It will then store that dataframe in the 
     #  self.indicator_frames dictionary
@@ -248,8 +239,6 @@ class indicator_controller:
 
         #print(self.page_matrix)
 
-            
-
     def readViewFile(self, file):
         with open(file, "r") as fh:
             for line in fh:
@@ -269,18 +258,22 @@ class indicator_controller:
                     name = result.groups()[1]
                     indicator_command_data = result.groups()[2]
 
-                    print("Indicator Command:")
-                    print(f" Command Type = {indicator_command}")
-                    print(f" Command Name = {name}")
-                    print(f" Command Data = {indicator_command_data}")
+                    #print("Indicator Command:")
+                    #print(f" Command Type = {indicator_command}")
+                    #print(f" Command Name = {name}")
+                    #print(f" Command Data = {indicator_command_data}")
 
                 if indicator_command == "MainTitle":
                     self.MainTitle = indicator_command_data
                     #print(f" Setting Main Title to {self.MainTitle}")
                     continue
+                if indicator_command == "MinHeight":
+                    self.min_height = indicator_command_data
+                    #print(f" Setting Main Title to {self.MainTitle}")
+                    continue
                 if indicator_command == "Indicator":
                     if self.indicators[name] is None:
-                        self.indicators[name] = indicator_view()
+                        self.indicators[name] = indicator_view(self)
                         self.indicators[name].name = name
 
                     # Break the indicator data up by <type>=<value>
@@ -293,8 +286,8 @@ class indicator_controller:
                         #print(f" {original_line}")
                         continue
 
-                    print(f"Type = '{type}'")
-                    print(f"Value = '{value}'")
+                    #print(f"Type = '{type}'")
+                    #print(f"Value = '{value}'")
                     ###########################
                     # data command
                     ###########################
@@ -336,6 +329,16 @@ class indicator_controller:
                             print(f"-W-   {value}")
                             continue
                     ###########################
+                    # pagesize command
+                    ###########################
+                    if type == "pagesize" and value:
+                        try:
+                            self.indicators[name].page_size = int(value)
+                        except:
+                            print(f"-W- Invalid page size specified:")
+                            print(f"-W-   {value}")
+                            continue
+                    ###########################
                     # colspan command
                     ###########################
                     if type == "colspan" and value:
@@ -350,6 +353,24 @@ class indicator_controller:
                     ###########################
                     if type == "type" and value:
                         self.indicators[name].type = value
+                        continue
+                    if type == "threshold" and value:
+                        match = re.search("^(\w+)\((.+?)\)(.+?)\,(.+)", value) 
+                        if match:
+                            ind = match.groups()[0]
+                            col = match.groups()[1]
+                            condition = match.groups()[2]
+                            color = match.groups()[3]
+                            #string= f'''
+                            #"(col.name=='{col}.{ind}'&col.value{condition})?'bg-{color} text-black' : 'text-black'"'''
+                            string= f'''
+                            'bg-{color}' : col.name=='{col}.{ind}'&col.value{condition},'''
+                            self.indicators[name].thresholds.append(string)
+
+                            self.indicators[name].aggrid_thresholds[f"{col}.{ind}"][f"bg-{color}"] = f"x {condition}"
+
+                            #print("Adding Threshold:")
+                            #print(string)
                         continue
                     ###########################
                     # plot command
@@ -372,8 +393,8 @@ class indicator_controller:
                                 break
                         continue
                     if type == "xaxis" and value:
-                        print("HERE")
-                        print(f" Value = {value}, Indicator={indicator}")
+                        #print("HERE")
+                        #print(f" Value = {value}, Indicator={indicator}")
                         match = re.search("(\w+)\((.+?)\)", value)
                         if match:
                             indicator = match.groups()[0]
@@ -381,6 +402,274 @@ class indicator_controller:
                             self.indicators[name].graph_x = f"{column}.{indicator}"
                         continue
                                     
+class indicator_view:
+    def __init__(self, controller=None):
+        # This dictionary stores all the files that have been read in, and contains
+        # a pointe to their pandas dataframe
+        self.indicator_dataframes = defaultdict(lambda: None)
+
+        # This is the controller object that made me...
+        self.controller = controller
+
+        # Final dataframe
+        self.display_dataframe = None
+
+        # Default indicator type is a table.
+        self.type = 'table'
+        self.name = None
+
+        # if a graph, store the x and y values
+        self.graph_x = ""
+        self.graph_y = ""
+
+        self.indicators_to_read = []
+        self.columns_to_join = []
+
+        # If a table, store the columns, if a chart, this is what I'm charting
+        self.plot = []
+
+        self.renames = defaultdict(lambda: None)
+
+        # This is where in the grid the indicator will live
+        self.pos_row = 1
+        self.pos_col = 1
+        self.rowspan = 1
+        self.colspan = 1
+
+        # A sortable number so I can place things appropriately
+        self.position_weight = None
+
+        # This stores a list of thresholds to apply to tables.
+        self.thresholds = []
+        self.aggrid_thresholds = defaultdict(lambda: {})
+
+        # This is the max rows displayed for a table before you need to page.
+        self.page_size = 10
+    
+    def setRename(self, old_name:str, new_name:str):
+        self.renames[old_name] = new_name
+
+    def getRename(self, name:str):
+        rename = name
+        while self.renames[rename] is not None:
+            rename = self.renames[rename]
+        return rename
+
+    def getPlotDataframe(self, name=None):
+        #print("Plot Values")
+        #print(self.plot)
+        filtered_dataframe = self.display_dataframe.loc[:, self.plot]
+        #print("DONE")
+        return filtered_dataframe
+
+    def makeDisplayDataframe(self):
+        #if len(self.columns_to_join) == 0:
+        #    self.display_dataframe = self.indicator_dataframes.items()[1]
+        #    return
+
+        # Sometimes, the user wants to combine 2 datafranes into a single indicator.
+        # keep a list of frames that the user wants to merge
+        frames_to_merge = []
+        # This is the frame that we're going to display to the user.  It might be a single idnicator, or it 
+        # might be a merged indicator of multiple frames.
+        self.display_dataframe = None
+
+        # See how many indicators we're read into the class.  Decide how many we're going to merge
+        for name in self.indicator_dataframes.keys():
+            df = self.indicator_dataframes[name]
+            frames_to_merge.append(df)
+
+        #print("COLUMNS TO JOIN")
+        # These are the columns we're going to merge together.
+        #print(self.columns_to_join)
+        
+        if len(frames_to_merge) > 1:
+            #print("MERGING MORE THAN ONE FRAME")
+            #combined_dataframe = reduce(lambda left, right: pd.merge(left, right, on=self.columns_to_join, suffixes=("." + left.name, "." + right.name)), frames_to_merge)
+            #self.display_dataframe = reduce(lambda left, right: pd.merge(left, right, on=self.columns_to_join), frames_to_merge)
+            for column in self.columns_to_join:
+                self.display_dataframe = reduce(lambda left, right: pd.merge(left, right, left_on=column+"."+left.name, right_on=column+"."+right.name), frames_to_merge)
+        else:
+            self.display_dataframe = frames_to_merge[0]
+
+        # Add suffixes to the non-joined columns that don't already have suffixes
+        #for name in self.indicator_dataframes.keys():
+        #    df = self.indicator_dataframes[name]
+        #    for column in df.columns:
+        #        if column in self.display_dataframe and column not in self.columns_to_join:
+        #            self.display_dataframe.rename(columns={column : column + "." + name}, inplace=True)
+        #print(self.display_dataframe)
+
+    def table(self):
+        dataframe=self.display_dataframe
+        column_for_ui = []
+        for col in self.plot:
+            col_rename = self.getRename(col)
+            col_data = {'name': col, 'label': col_rename, 'field': col, 'sortable' : True, 'align': "left"}
+            column_for_ui.append(col_data)
+        rows = dataframe.to_dict('records')
+        with ui.table(
+            columns=column_for_ui, 
+            rows=rows, 
+            pagination=self.page_size,
+            title=self.name,
+            ).props('dense').classes(f"col-span-{self.colspan} my-sticky-header-table") as table:
+            self.table = table
+
+            if len(self.thresholds) > 0:
+            # This is how do you coloring of cells conditionally
+                slot_command = '''
+                    <q-tr :props="props">
+                        <q-td 
+                            v-for="col in props.cols"
+                            :key="col.name"
+                            :props="props"
+                            :class="{'''
+                            
+                for cmd in self.thresholds:
+                    slot_command = slot_command + cmd
+
+                slot_command += r'''}"
+                        >
+                            {{ col.value }}
+                        </q-td>
+                    </q-tr>
+                '''
+                #print("SLOT COMMAND:")
+                #print(slot_command)
+                table.add_slot('body', slot_command)
+                table.on('cellClicked', self.onCellClicked)
+
+    def aggrid(self):
+        dataframe=self.display_dataframe
+        column_for_ui = []
+        for col in self.plot:
+            col_rename = self.getRename(col)
+            col_data = {'headerName': col_rename, 'field': col, 'sortable' : "true", 
+                        'cellClassRules' : self.aggrid_thresholds[col],
+                        }
+
+
+            column_for_ui.append(col_data)
+        rows = dataframe.to_dict('records')
+        #print(rows)
+        with ui.element():
+            if self.name is not None:
+                ui.label(self.name)
+            table =  ui.aggrid({
+                'columnDefs':column_for_ui, 
+                'rowData':rows, 
+                'pagination':'true',
+                #'paginationAutoPageSize':'true',
+                "suppressFieldDotNotation" : "true",
+                }).classes(f"col-span-{self.colspan}").style(f"min-height: {self.controller.min_height}")
+
+        #for row in table.options['rowData']:
+        #    for col, value in row.items():
+        #        row[col] = '<a href=https://google.com>' + str(value) + "</a>"
+        #    
+        table.on('cellClicked', self.onCellClicked)
+
+    def onCellClicked(sender, msg):
+        file = None
+        column_clicked = msg.args['colId']
+        indicator_name = column_clicked.split('.')[1]
+        column_name = column_clicked.split('.')[0]
+        try:
+            file = msg.args['data'][f"metadata.{indicator_name}"]
+        except:
+            pass
+
+        if file is not None:
+            if os.path.exists(file):
+                text = indicator_view.getMetaData(file,column_name)
+                
+                with ui.dialog().classes('w-full') as dialog, ui.card().classes('w-full'):
+                    ui.textarea(f"{indicator_name} : {column_clicked}", value=text).classes('w-full')
+                dialog.open()
+
+            
+    def line(self, container=None):
+        #print(f" X = {self.graph_x}")
+        fig = px.line(self.display_dataframe, x=self.graph_x, y=self.plot)
+        fig.update_layout(title=self.name)
+        fig.update_layout(legend=dict(
+           orientation="h",
+           yanchor="bottom",
+           y=1.02,
+           xanchor="right", 
+           x=1
+        ))
+
+        if container is None:
+            container = ui.element().classes(f"col-span-{self.colspan}")
+            
+        with container:
+            with ui.row():
+                ui.label("Change Graph Type:")
+                radio = ui.radio(["line", "bar"], value="line", on_change=self.on_chart_change).props("inline")
+            my_chart = ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style(f"min-height: {self.controller.min_height}")
+            radio.mychart = my_chart
+            radio.container = container
+
+
+    def bar(self, container=None):
+        #print(f" X = {self.graph_x}")
+        fig = px.bar(self.display_dataframe, x=self.graph_x, y=self.plot)
+        fig.update_layout(title=self.name)
+        fig.update_layout(legend=dict(
+           orientation="h",
+           yanchor="bottom",
+           y=1.02,
+           xanchor="right", 
+           x=1
+        ))
+
+        # Put all of this stuff into a constainer.  This way, I can "clear" the container and switch from a 
+        # line graph to a bar graph, etc, and I can lump in things like labels or any other stuff and have it 
+        # all stay in it's grid position
+        if container is None:
+            container = ui.element().classes(f"col-span-{self.colspan}")
+
+        with container:
+            with ui.row():
+                ui.label("Change Graph Type:")
+                radio = ui.radio(["line", "bar"], value="bar", on_change=self.on_chart_change).props("inline")
+            my_chart = ui.plotly(fig).classes(f"col-span-{self.colspan} w-full h-80").style(f"min-height: {self.controller.min_height}")
+            radio.mychart = my_chart
+            radio.container = container
+
+    def on_chart_change(self, value):
+        # Clear out the old chart
+        value.sender.container.clear()
+
+        # Render the chart that the user now wants...
+        if value.sender.value == "bar":
+            self.bar(value.sender.container)
+        if value.sender.value == "line":
+            self.line(value.sender.container)
+    
+    def getMetaData(file, type):
+        in_metadata = False
+        result = []
+        with open(file, "r") as fh:
+            for line in fh:
+                # Skip blank lines...
+                if line.isspace():
+                    continue
+                if line.startswith(f"#META({type})"):
+                    in_metadata = True
+                    continue
+                if line.startswith('#META('):
+                    in_metadata = False
+                    continue
+                if in_metadata:
+                    result.append(line)
+        return "".join(result)
+                    
+
+
+                    
 
 
             
@@ -389,9 +678,11 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     # Makea new controller object.
     controller = indicator_controller()
+    controller.data_source = "/Users/kevinlaake/projects/niceMetrics"
+    controller.view_file = "/Users/kevinlaake/projects/niceMetrics/sample_view"
     controller.prepareIndicators()
     controller.displayIndicators()
-    ui.run(title="Nice Metrics", dark=False, native=True)
+    ui.run(title="Nice Metrics", dark=False)
 
     
     

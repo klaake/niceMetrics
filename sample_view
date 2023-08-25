@@ -3,43 +3,55 @@
 # <COMMAND>:<NAME>:<CRITERIA>
 # or
 # <COMMAND>:<CRITERIA>
+# Here are the valid threshold colors:
+#  https://quasar.dev/style/color-palette#color-list
 
-MainTitle():My Bar
+MainTitle():My Example Indicator
+MinHeight():450px
 
 Indicator(My Test Indicator):data=apr,timing
 Indicator(My Test Indicator):join=block,tag
-Indicator(My Test Indicator):position=1,1
+Indicator(My Test Indicator):position=2,1
 Indicator(My Test Indicator):rowspan=1
 Indicator(My Test Indicator):colspan=2
 Indicator(My Test Indicator):type=table
-#IndicatorMy Test Indicatorr):plot=apr(block,tag,shorts,opens),timing(wns,tns,failing_paths)
-Indicator(My Test Indicator):plot=apr(block,tag,shorts),timing(block, wns, tns,failing_paths)
+Indicator(My Test Indicator):plot=apr(block,tag,shorts),timing(block, wns, tns, failing_paths)
+Indicator(My Test Indicator):threshold=apr(shorts)==0,green
+Indicator(My Test Indicator):threshold=apr(shorts)>0,red-3
+Indicator(My Test Indicator):threshold=apr(shorts)>20,purple-11
+Indicator(My Test Indicator):threshold=apr(shorts)>99,indigo-11
 
 Indicator(Sample Timing Data):data=timing
-Indicator(Sample Timing Data):position=1,3
+Indicator(Sample Timing Data):position=2,3
 Indicator(Sample Timing Data):rowspan=1
 Indicator(Sample Timing Data):colspan=1
 Indicator(Sample Timing Data):type=table
 Indicator(Sample Timing Data):plot=timing(wns,tns,failing_paths)
+Indicator(Sample Timing Data):threshold=timing(failing_paths)>0,red-3
+Indicator(Sample Timing Data):threshold=timing(failing_paths)>100,red-4
+Indicator(Sample Timing Data):threshold=timing(failing_paths)>500,red-5
+Indicator(Sample Timing Data):threshold=timing(failing_paths)>1000,red-7
+Indicator(Sample Timing Data):threshold=timing(failing_paths)>2499,red-10
+Indicator(Sample Timing Data):pagesize=20
 
 Indicator(Sample Timing Data 2):data=timing
-Indicator(Sample Timing Data 2):position=2,2
+Indicator(Sample Timing Data 2):position=3,1
 Indicator(Sample Timing Data 2):rowspan=1
 Indicator(Sample Timing Data 2):colspan=1
 Indicator(Sample Timing Data 2):type=table
 Indicator(Sample Timing Data 2):plot=timing(wns,tns,failing_paths)
 
 Indicator(Sample Timing Data 3):data=timing
-Indicator(Sample Timing Data 3):position=2,3
+Indicator(Sample Timing Data 3):position=1,3
 Indicator(Sample Timing Data 3):rowspan=1
 Indicator(Sample Timing Data 3):colspan=1
 Indicator(Sample Timing Data 3):type=table
 Indicator(Sample Timing Data 3):plot=timing(wns,tns,failing_paths)
 
 Indicator(Timing Graph):data=timing
-Indicator(Timing Graph):position=3,1
+Indicator(Timing Graph):position=1,1
 Indicator(Timing Graph):rowspan=1
-Indicator(Timing Graph):colspan=3
+Indicator(Timing Graph):colspan=2
 Indicator(Timing Graph):type=line
 Indicator(Timing Graph):plot=timing(failing_paths)
 Indicator(Timing Graph):xaxis=timing(tag)
