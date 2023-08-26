@@ -43,6 +43,10 @@ class indicator_controller:
         # This is the minimum size a widget can be on the screen. Can configure in the view file
         self.min_height = "500px"
 
+        # This is how fast the indicator will self-refresh.  Off by default
+        self.refresh_interval = 60
+        self.refresh_enabled = False
+
     # This function will search the underlying directories and look for CSV files
     def findIndicators(self, datapath: str) -> bool:
         # Does the directory exist?
@@ -86,9 +90,13 @@ class indicator_controller:
                 with ui.expansion("Hide/Show Data and View Inputs",  value=True).classes('w-full').style("width:800px") as self.expander:
                     ui.input(label="Data Source Directory").bind_value(self, "data_source").props("outlined dense stack-label").style("width:800px")
                     ui.input(label="Indicator View File").bind_value(self, "view_file").props("outlined dense stack-label").style("width:800px")
-                ui.button('Load Indicators', on_click=lambda: self.reload_indicators())
-        
-
+                with ui.row():
+                    ui.button('Load Indicators', on_click=lambda: self.reload_indicators())
+                    ui.switch('Enable Auto-Refresh').on("click", self.refresh_timer).value=self.refresh_enabled
+                    self.interval = ui.number("Seconds", placeholder=60)
+                    self.interval.on("update:model-value", self.update_timer_value)
+                    self.interval.value = self.refresh_interval
+                    #self.interval.visible = False
         with self.mygrid:
             if self.MainTitle is not None:
                 ui.label(self.MainTitle).classes("text-center col-span-3").style("font-size: 200%").tailwind.font_weight('extrabold')
@@ -114,6 +122,23 @@ class indicator_controller:
                         indicator.line()
                     if indicator.type == "bar":
                         indicator.bar()
+    
+    def update_timer_value(self, value):
+        self.refresh_interval = float(value.args)
+        try:
+            self.timer.interval = self.refresh_interval
+        except:
+            pass
+    
+    def refresh_timer(self, value):
+        self.refresh_enabled = value.sender.value
+        if self.refresh_enabled is True:
+            #self.interval.visible = True
+            self.timer = ui.timer(self.refresh_interval, self.reload_indicators)
+            self.timer.active = True
+        else:
+            #self.interval.visible = False
+            self.timer.active = False
                         
     def reload_indicators(self):
 
@@ -134,6 +159,9 @@ class indicator_controller:
         #self.mygrid.clear()
         #self.indicator_header = None
         #print("RELOADING!")
+        self.indicator_frames = defaultdict(lambda: None)
+        self.indicator_files = defaultdict(lambda: [])
+        self.indicator_file_read = defaultdict(lambda: False)
         self.indicators = defaultdict(lambda: None)
         self.findIndicators(self.data_source)
         self.readViewFile(self.view_file)

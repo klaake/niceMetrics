@@ -1,5 +1,5 @@
 block,tag,wns,tns,failing_paths,metadata
-myblockA,run1,-500,-100000,5000,/Users/kevinlaake/projects/niceMetrics/data/timing/run1_meta
+myblockA,run1,-500,-100000,6000,/Users/kevinlaake/projects/niceMetrics/data/timing/run1_meta
 myblockA,run2,-250,-50000,2500,
 myblockA,run3,-100,-10000,1200,
 myblockA,run4,-50,-4500,600,
