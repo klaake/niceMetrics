@@ -11,10 +11,11 @@ from matplotlib import pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 import re as re
+from urllib.parse import quote
 
 
 class indicator_controller:
-    def __init__(self):
+    def __init__(self, data_source=None, view_file=None, global_filter=None):
         # Key: Indicator Name, Value = a pandas dataframe
         self.indicator_frames = defaultdict(lambda: None)
         # Key: Indicator Name, Value = list of files that were read in for that particular indicator
@@ -29,9 +30,15 @@ class indicator_controller:
 
         # The directory to start looking for CSV files for the indicators.  Set by an 
         # input box
-        self.data_source = None
+        self.data_source = data_source
         # The view file that describes how to setup the page
-        self.view_file = None
+        self.view_file = view_file
+
+        # This is a global filter string that will apply to everything being plotted...
+        self.global_filter_string = global_filter
+        self.global_filters = []
+        if self.global_filter_string:
+            self.global_filters = self.makeDataFilter(self.global_filter_string)
 
         # This is a ui.header() object that will store the input boxes and load indicator
         # button
@@ -46,6 +53,24 @@ class indicator_controller:
         # This is how fast the indicator will self-refresh.  Off by default
         self.refresh_interval = 60
         self.refresh_enabled = False
+
+    def makeDataFilter(self, filter_string):
+        filters = []
+        if filter_string:
+            filter_segments = filter_string.split('&')
+            #print(filter_segments)
+            for seg in filter_segments:
+                match = re.search("^(\S+?)(!*~|!*=|>=*|<=*)(.+)", seg)
+                if match:
+                    column_name = match.groups()[0]
+                    operation = match.groups()[1]
+                    value = match.groups()[2]
+                    new_filter = defaultdict(lambda: None)
+                    new_filter['column'] = column_name
+                    new_filter['operation'] = operation
+                    new_filter['value'] = value
+                    filters.append(new_filter)
+        return filters
 
     # This function will search the underlying directories and look for CSV files
     def findIndicators(self, datapath: str) -> bool:
@@ -90,13 +115,16 @@ class indicator_controller:
                 with ui.expansion("Hide/Show Data and View Inputs",  value=True).classes('w-full').style("width:800px") as self.expander:
                     ui.input(label="Data Source Directory").bind_value(self, "data_source").props("outlined dense stack-label").style("width:800px")
                     ui.input(label="Indicator View File").bind_value(self, "view_file").props("outlined dense stack-label").style("width:800px")
-                with ui.row():
-                    ui.button('Load Indicators', on_click=lambda: self.reload_indicators())
-                    ui.switch('Enable Auto-Refresh').on("click", self.refresh_timer).value=self.refresh_enabled
-                    self.interval = ui.number("Seconds", placeholder=60)
-                    self.interval.on("update:model-value", self.update_timer_value)
-                    self.interval.value = self.refresh_interval
-                    #self.interval.visible = False
+                    ui.input(label="Global Filter").bind_value(self, "global_filter_string").props("outlined dense stack-label").style("width:800px")
+                container = ui.element().classes(f"col-span-3")
+                with container:
+                    with ui.row():
+                            ui.button('Load Indicators', on_click=lambda: self.reload_indicators())
+                            ui.switch('Enable Auto-Refresh').on("click", self.refresh_timer).value=self.refresh_enabled
+                            self.interval = ui.number("Seconds", placeholder=60)
+                            self.interval.on("update:model-value", self.update_timer_value)
+                            self.interval.value = self.refresh_interval
+                            #self.interval.visible = False
         with self.mygrid:
             if self.MainTitle is not None:
                 ui.label(self.MainTitle).classes("text-center col-span-3").style("font-size: 200%").tailwind.font_weight('extrabold')
@@ -115,13 +143,16 @@ class indicator_controller:
                     # Table Indicator!
                     ################################################################
                     if indicator.type == "table":
-                        indicator.aggrid()
+                        indicator.aggrid(global_filter=self.global_filters)
                     if indicator.type == "aggrid":
-                        indicator.aggrid()
+                        indicator.aggrid(global_filter=self.global_filters)
                     if indicator.type == "line":
-                        indicator.line()
+                        indicator.line(global_filter=self.global_filters)
                     if indicator.type == "bar":
-                        indicator.bar()
+                        indicator.bar(global_filter=self.global_filters)
+            ui.label("").classes("w-1/3")
+            ui.label("").classes("w-1/3")
+            ui.label("").classes("w-1/3")
     
     def update_timer_value(self, value):
         self.refresh_interval = float(value.args)
@@ -142,33 +173,19 @@ class indicator_controller:
                         
     def reload_indicators(self):
 
-        if self.data_source is None:
-            ui.notify('ERROR: Data Source is Empty!')
-            return
-        if self.view_file is None:
-            ui.notify('ERROR: View File was Not specified!')
-            return
-        if not os.path.exists(self.data_source):
-            ui.notify(f"ERROR: Data Source Does not exist!")
-            ui.notify(self.data_source)
-            return
-        if not os.path.exists(self.view_file):
-            ui.notify(f"ERROR: View File Does Not Exist:")
-            ui.notify(self.view_file)
-            return
-        #self.mygrid.clear()
-        #self.indicator_header = None
-        #print("RELOADING!")
-        self.indicator_frames = defaultdict(lambda: None)
-        self.indicator_files = defaultdict(lambda: [])
-        self.indicator_file_read = defaultdict(lambda: False)
-        self.indicators = defaultdict(lambda: None)
-        self.findIndicators(self.data_source)
-        self.readViewFile(self.view_file)
-        self.prepareIndicators()
-        self.displayIndicators()
-        
+        parameters = defaultdict(lambda: "")
+        if self.data_source is not None:
+            parameters['data'] = self.data_source
+        if self.view_file is not None:
+            parameters['view'] = self.view_file
+        if self.global_filter_string is not None:
+            parameters['filter'] = self.global_filter_string
 
+        encoded_params = {key: quote(str(value)) for key, value in parameters.items()}
+        my_url = f"load?data={encoded_params['data']}&&view={encoded_params['view']}&&filter={encoded_params['filter']}"
+        ui.open(my_url)
+        return
+        
     # This function will take all the indicator files named "indicator" and will
     #  read them into a pandas dataframe.  It will then store that dataframe in the 
     #  self.indicator_frames dictionary
@@ -226,22 +243,50 @@ class indicator_controller:
         # objects have been made, read in the data we need, and make a matrix of where
         # indicator objects will live.
         max_weight = 0
-        for indicator_name in self.indicators.keys():
-            #print(f"Processing Indicator = {indicator_name}")
-            view = self.indicators[indicator_name]
-            for csv_name in view.indicators_to_read:
-                dataframe = self._readDataIntoFrame(csv_name)
-                view.indicator_dataframes[csv_name] = dataframe
+        if self.indicators:
+            for indicator_name in self.indicators.keys():
+                #print(f"Processing Indicator = {indicator_name}")
+                view = self.indicators[indicator_name]
+                for csv_name in view.indicators_to_read:
+                    dataframe = self._readDataIntoFrame(csv_name)
+                    view.indicator_dataframes[csv_name] = dataframe
 
-            # If I need to combine 2 different data sets into 1 table, then do it here.
-            # else, this function will just take the one dataframe and use it
-            view.makeDisplayDataframe()
-            
-            # Calculate the position 'weight' so I can order the views appropriately
-            view.position_weight = (view.pos_row-1)*3 + (view.pos_col-1) 
-            #print(f"Indicator Weight = {view.position_weight}")
-            if max_weight < view.position_weight:
-                max_weight = view.position_weight
+                # If I need to combine 2 different data sets into 1 table, then do it here.
+                # else, this function will just take the one dataframe and use it
+                view.makeDisplayDataframe()
+
+                # Calculate the position 'weight' so I can order the views appropriately
+                view.position_weight = (view.pos_row-1)*3 + (view.pos_col-1) 
+                #print(f"Indicator Weight = {view.position_weight}")
+                if max_weight < view.position_weight:
+                    max_weight = view.position_weight
+        else:
+            # Make an indicator for every data we have
+            row = 1
+            for ind in self.indicator_files.keys():
+                dataframe = self._readDataIntoFrame(ind)
+                # Make a new view file
+                view = indicator_view(self)
+                view.name=ind
+                for c in dataframe.columns:
+                    view.plot.append(c)
+                    view.pos_row = row
+                    view.pos_col = 1
+                    view.colspan = 3
+                    string = ".foo"
+                    col_display_name = re.sub(f"\.{ind}$", '', c)
+                    view.setRename(c, col_display_name)
+                view.type = "aggrid"
+
+                view.indicator_dataframes[ind] = dataframe
+                view.display_dataframe = dataframe
+
+                view.position_weight = (view.pos_row-1)*3 + (view.pos_col-1) 
+                if max_weight < view.position_weight:
+                    max_weight = view.position_weight
+                
+                self.indicators[ind] = view
+
 
         # Now that I have a max weight, calcualte a matrix of indicators.
         matrix_rows = int(max_weight/3) + 1
@@ -263,10 +308,11 @@ class indicator_controller:
                     if col <= 2:
                         self.page_matrix[row][col] = 'colspan'
                 
-
         #print(self.page_matrix)
 
     def readViewFile(self, file):
+        if os.path.exists(file) is False:
+            return
         with open(file, "r") as fh:
             for line in fh:
                 # Skip blank lines...
@@ -381,6 +427,25 @@ class indicator_controller:
                     if type == "type" and value:
                         self.indicators[name].type = value
                         continue
+                    if type == "sortType" and value:
+                        self.indicators[name].sortType = value
+                        continue
+                    if type == "filter" and value:
+                        self.indicators[name].local_filter = self.makeDataFilter(value)
+                        continue
+                    if type == "sortBy" and value:
+                        match=re.match("^(\S+)\((.+?)\)", value)
+                        if match:
+                            i = match.groups()[0]
+                            c = match.groups()[1]
+                            self.indicators[name].sortBy = f"{c}.{i}"
+                        continue
+                    if type == "max_entries" and value:
+                        try:
+                            self.indicators[name].max_entries = int(value)
+                        except:
+                            pass
+                        continue
                     if type == "threshold" and value:
                         match = re.search("^(\w+)\((.+?)\)(.+?)\,(.+)", value) 
                         if match:
@@ -472,6 +537,13 @@ class indicator_view:
 
         # This is the max rows displayed for a table before you need to page.
         self.page_size = 10
+
+        self.max_entries = None
+
+        self.sortBy = None
+        self.sortType = "descending"
+
+        self.local_filter = []
     
     def setRename(self, old_name:str, new_name:str):
         self.renames[old_name] = new_name
@@ -527,6 +599,16 @@ class indicator_view:
         #            self.display_dataframe.rename(columns={column : column + "." + name}, inplace=True)
         #print(self.display_dataframe)
 
+        # Sort the dataframe if the user wants it
+        if self.sortBy is not None:
+            #print(f"Sorting by '{self.sortBy}'")
+            if self.sortType != "ascending":
+                self.display_dataframe.sort_values(by=self.sortBy, ascending=False, inplace=True)
+            else:
+                self.display_dataframe.sort_values(by=self.sortBy, ascending=True, inplace=True)
+            #print(self.display_dataframe)
+
+
     def table(self):
         dataframe=self.display_dataframe
         column_for_ui = []
@@ -567,8 +649,67 @@ class indicator_view:
                 table.add_slot('body', slot_command)
                 table.on('cellClicked', self.onCellClicked)
 
-    def aggrid(self):
-        dataframe=self.display_dataframe
+    def filter_dataframe(self, dataframe, global_filter:list=None, local_filter:list=None, max_entries:int=None):
+        if global_filter:
+            new_frame = dataframe
+            for flt in global_filter:
+                #print(flt)
+                matching_columns = new_frame.filter(like=f"{flt['column']}.", axis = 1)
+                for c in matching_columns:
+                    if flt['operation'] == "~":
+                        new_frame = new_frame[new_frame[c].str.contains(flt['value'], regex=True)]
+                    if flt['operation'] == "!~":
+                        new_frame = new_frame[~new_frame[c].str.contains(flt['value'], regex=True)]
+                        #print(new_frame)
+                    if flt['operation'] == "=":
+                        new_frame = new_frame[new_frame[c] == flt['value']]
+                    if flt['operation'] == "!=":
+                        new_frame = new_frame[new_frame[c] != flt['value']]
+                    if flt['operation'] == ">":
+                        new_frame = new_frame[new_frame[c] > flt['value']]
+                    if flt['operation'] == ">=":
+                        new_frame = new_frame[new_frame[c] >= flt['value']]
+                    if flt['operation'] == "<":
+                        new_frame = new_frame[new_frame[c] < flt['value']]
+                    if flt['operation'] == "<=":
+                        new_frame = new_frame[new_frame[c] < flt['value']]
+            dataframe=new_frame
+        if local_filter:
+            new_frame = dataframe
+            for flt in local_filter:
+                #print(flt)
+                matching_columns = new_frame.filter(like=f"{flt['column']}.", axis = 1)
+                for c in matching_columns:
+                    if flt['operation'] == "~":
+                        new_frame = new_frame[new_frame[c].str.contains(flt['value'], regex=True)]
+                    if flt['operation'] == "!~":
+                        new_frame = new_frame[~new_frame[c].str.contains(flt['value'], regex=True)]
+                        print(new_frame)
+                    if flt['operation'] == "=":
+                        new_frame = new_frame[new_frame[c] == flt['value']]
+                    if flt['operation'] == "!=":
+                        new_frame = new_frame[new_frame[c] != flt['value']]
+                    if flt['operation'] == ">":
+                        new_frame = new_frame[new_frame[c] > flt['value']]
+                    if flt['operation'] == ">=":
+                        new_frame = new_frame[new_frame[c] >= flt['value']]
+                    if flt['operation'] == "<":
+                        new_frame = new_frame[new_frame[c] < flt['value']]
+                    if flt['operation'] == "<=":
+                        new_frame = new_frame[new_frame[c] < flt['value']]
+
+            dataframe=new_frame
+
+        if max_entries is not None:
+            new_frame = dataframe.tail(max_entries)
+            dataframe = new_frame
+
+        return dataframe
+
+    def aggrid(self, global_filter:list=None):
+
+        dataframe = self.filter_dataframe(self.display_dataframe, global_filter, self.local_filter, max_entries=self.max_entries)
+
         column_for_ui = []
         for col in self.plot:
             col_rename = self.getRename(col)
@@ -580,13 +721,14 @@ class indicator_view:
             column_for_ui.append(col_data)
         rows = dataframe.to_dict('records')
         #print(rows)
-        with ui.element():
+        with ui.element().classes(f"col-span-{self.colspan}"):
             if self.name is not None:
                 ui.label(self.name)
             table =  ui.aggrid({
                 'columnDefs':column_for_ui, 
                 'rowData':rows, 
                 'pagination':'true',
+                'defaultColDef' : { 'autoHeaderHeight' : 'true', 'wrapHeaderText' : 'true', 'resizable' : 'true' },
                 #'paginationAutoPageSize':'true',
                 "suppressFieldDotNotation" : "true",
                 }).classes(f"col-span-{self.colspan}").style(f"min-height: {self.controller.min_height}")
@@ -616,9 +758,11 @@ class indicator_view:
                 dialog.open()
 
             
-    def line(self, container=None):
+    def line(self, global_filter:list=None, container=None):
+        dataframe = self.filter_dataframe(self.display_dataframe, global_filter, self.local_filter, max_entries=self.max_entries)
         #print(f" X = {self.graph_x}")
-        fig = px.line(self.display_dataframe, x=self.graph_x, y=self.plot)
+        #fig = px.line(self.display_dataframe, x=self.graph_x, y=self.plot)
+        fig = px.line(dataframe, x=self.graph_x, y=self.plot)
         fig.update_layout(title=self.name)
         fig.update_layout(legend=dict(
            orientation="h",
@@ -640,9 +784,10 @@ class indicator_view:
             radio.container = container
 
 
-    def bar(self, container=None):
+    def bar(self, global_filter:list=None, container=None):
         #print(f" X = {self.graph_x}")
-        fig = px.bar(self.display_dataframe, x=self.graph_x, y=self.plot)
+        dataframe = self.filter_dataframe(self.display_dataframe, global_filter, self.local_filter, max_entries=self.max_entries)
+        fig = px.bar(dataframe, x=self.graph_x, y=self.plot)
         fig.update_layout(title=self.name)
         fig.update_layout(legend=dict(
            orientation="h",
@@ -672,9 +817,9 @@ class indicator_view:
 
         # Render the chart that the user now wants...
         if value.sender.value == "bar":
-            self.bar(value.sender.container)
+            self.bar(container=value.sender.container)
         if value.sender.value == "line":
-            self.line(value.sender.container)
+            self.line(container=value.sender.container)
     
     def getMetaData(file, type):
         in_metadata = False
@@ -694,11 +839,6 @@ class indicator_view:
                     result.append(line)
         return "".join(result)
                     
-
-
-                    
-
-
             
 # This is where I can test the class.....
 if __name__ in {"__main__", "__mp_main__"}:
