@@ -1,8 +1,0 @@
-#META(wns)
-WNS = -500
-#META(tns)
-TNS = -10000
-#META(failing_paths)
-Here are some failing paths:
-1 foo bar -500
-2 hey yo -499

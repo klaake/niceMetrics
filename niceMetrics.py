@@ -1,13 +1,10 @@
-#!/apps/oss/python-3.11.5/bin/python3
+#!/usr/bin/env python3
 
 from nicegui import ui, app
 from uuid import uuid4
 import argparse
 import sys
 import os
-
-script_directory = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(f"{script_directory}/niceMetrics_modules")
 
 from indicator_controller import indicator_controller
 

@@ -15,7 +15,7 @@ Indicator(My Test Indicator):position=2,1
 Indicator(My Test Indicator):rowspan=1
 Indicator(My Test Indicator):colspan=2
 Indicator(My Test Indicator):type=table
-Indicator(My Test Indicator):plot=apr(block,tag,shorts),timing(block, wns, tns, failing_paths)
+Indicator(My Test Indicator):plot=apr(block,tag,shorts),timing(block, wns, failing_paths)
 Indicator(My Test Indicator):threshold=apr(shorts)==0,green
 Indicator(My Test Indicator):threshold=apr(shorts)>0,red-3
 Indicator(My Test Indicator):threshold=apr(shorts)>20,purple-11

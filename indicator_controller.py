@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import re as re
 from urllib.parse import quote
+from functools import partial
 
 
 class indicator_controller:
@@ -111,11 +112,14 @@ class indicator_controller:
         # view file.  Add the ability to hide/show the boxes for more visible room for the 
         # indicators.
         with self.indicator_header:
-            with ui.column():
-                with ui.expansion("Hide/Show Data and View Inputs",  value=True).classes('w-full').style("width:800px") as self.expander:
-                    ui.input(label="Data Source Directory").bind_value(self, "data_source").props("outlined dense stack-label").style("width:800px")
-                    ui.input(label="Indicator View File").bind_value(self, "view_file").props("outlined dense stack-label").style("width:800px")
-                    ui.input(label="Global Filter").bind_value(self, "global_filter_string").props("outlined dense stack-label").style("width:800px")
+            with ui.column().classes('w-full'):
+                with ui.row().classes('w-full'):
+                    with ui.expansion("Hide/Show Data and View Inputs",  value=True).classes('w-full').style("width:800px") as self.expander:
+                        ui.input(label="Data Source Directory").bind_value(self, "data_source").props("outlined dense stack-label").style("width:800px")
+                        ui.input(label="Indicator View File").bind_value(self, "view_file").props("outlined dense stack-label").style("width:800px")
+                        ui.input(label="Global Filter").bind_value(self, "global_filter_string").props("outlined dense stack-label").style("width:800px")
+                    with ui.link('', 'http://your_help_link.html',True).classes('ml-auto').style('color: inherit;'):
+                        ui.icon('help').classes('ml-auto text-5xl')
                 container = ui.element().classes(f"col-span-3")
                 with container:
                     with ui.row():
@@ -208,6 +212,7 @@ class indicator_controller:
 
             #print(f"Reading in Indicator File = {csv_file}")
             new_df = pd.read_csv(csv_file)
+            new_df.fillna('',inplace=True)
             # Add a suffix to the end of the indicator indicating what indicator it belongs to.
             for col in new_df.columns:
                 new_df.rename(columns={col : col + "." + indicator_name}, inplace=True)
@@ -660,7 +665,6 @@ class indicator_view:
                         new_frame = new_frame[new_frame[c].str.contains(flt['value'], regex=True)]
                     if flt['operation'] == "!~":
                         new_frame = new_frame[~new_frame[c].str.contains(flt['value'], regex=True)]
-                        #print(new_frame)
                     if flt['operation'] == "=":
                         new_frame = new_frame[new_frame[c] == flt['value']]
                     if flt['operation'] == "!=":
@@ -684,7 +688,7 @@ class indicator_view:
                         new_frame = new_frame[new_frame[c].str.contains(flt['value'], regex=True)]
                     if flt['operation'] == "!~":
                         new_frame = new_frame[~new_frame[c].str.contains(flt['value'], regex=True)]
-                        print(new_frame)
+                        #print(new_frame)
                     if flt['operation'] == "=":
                         new_frame = new_frame[new_frame[c] == flt['value']]
                     if flt['operation'] == "!=":
@@ -722,8 +726,17 @@ class indicator_view:
         rows = dataframe.to_dict('records')
         #print(rows)
         with ui.element().classes(f"col-span-{self.colspan}"):
-            if self.name is not None:
-                ui.label(self.name)
+            with ui.element():
+                with ui.row():
+                    if self.name is not None:
+                        ui.label(self.name).style("font-size: 20px; font-weight: bold;")
+                    with ui.element().classes('ml-auto'):
+                        btn = ui.button('Export To CSV')
+                        btn.style("font-size: 10px; padding: 6px 10px; float: right")
+                        btn.classes('ml-auto')
+                        btn2 = ui.button('Size To Contents')
+                        btn2.style("font-size: 10px; padding: 6px 10px; float: right")
+                        btn2.classes('ml-auto')
             table =  ui.aggrid({
                 'columnDefs':column_for_ui, 
                 'rowData':rows, 
@@ -732,12 +745,16 @@ class indicator_view:
                 #'paginationAutoPageSize':'true',
                 "suppressFieldDotNotation" : "true",
                 }).classes(f"col-span-{self.colspan}").style(f"min-height: {self.controller.min_height}")
+            btn.on("click", lambda: table.call_api_method('exportDataAsCsv'))
+            btn2.on("click", lambda: table.call_column_api_method('autoSizeAllColumns'))
 
         #for row in table.options['rowData']:
         #    for col, value in row.items():
         #        row[col] = '<a href=https://google.com>' + str(value) + "</a>"
         #    
         table.on('cellClicked', self.onCellClicked)
+        table.on('gridReady', self.sizeToContents)
+        self.mytable = table
 
     def onCellClicked(sender, msg):
         file = None
@@ -757,11 +774,14 @@ class indicator_view:
                     ui.textarea(f"{indicator_name} : {column_clicked}", value=text).classes('w-full')
                 dialog.open()
 
+    def sizeToContents(sender):
+        sender.mytable.call_column_api_method('autoSizeAllColumns')
             
     def line(self, global_filter:list=None, container=None):
         dataframe = self.filter_dataframe(self.display_dataframe, global_filter, self.local_filter, max_entries=self.max_entries)
         #print(f" X = {self.graph_x}")
         #fig = px.line(self.display_dataframe, x=self.graph_x, y=self.plot)
+        #print(dataframe)
         fig = px.line(dataframe, x=self.graph_x, y=self.plot)
         fig.update_layout(title=self.name)
         fig.update_layout(legend=dict(
